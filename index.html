@@ -507,15 +507,22 @@
 <body>
 <!-- API KEY SETUP OVERLAY -->
 <div id="apikey-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;padding:20px">
-  <div style="background:#1a1b1e;border:1px solid #333;border-radius:18px;padding:32px;max-width:420px;width:100%">
+  <div style="background:#1a1b1e;border:1px solid #333;border-radius:18px;padding:32px;max-width:420px;width:100%;position:relative">
+    <!-- Close button (only shown if key already exists) -->
+    <button id="apikey-close-btn" onclick="document.getElementById('apikey-overlay').style.display='none'"
+      style="display:none;position:absolute;top:14px;right:16px;background:none;border:none;color:#666;font-size:20px;cursor:pointer;line-height:1;padding:4px"
+      onmouseover="this.style.color='#aaa'" onmouseout="this.style.color='#666'">x</button>
+    <!-- Status badge (shown when key exists) -->
+    <div id="apikey-status-badge" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:10px;font-size:13px;text-align:center"></div>
     <div style="font-size:28px;margin-bottom:10px;text-align:center">🔑</div>
-    <h2 style="margin-bottom:6px;text-align:center;font-size:20px">Enter your Anthropic API Key</h2>
+    <h2 id="apikey-modal-title" style="margin-bottom:6px;text-align:center;font-size:20px">Enter your Anthropic API Key</h2>
     <p style="color:#888;font-size:13px;text-align:center;margin-bottom:24px;line-height:1.6">MacroTrack uses Claude AI for food parsing, macro lookups, and Coach Aria. Your key is stored only in your browser and never sent anywhere except Anthropic.</p>
     <div style="margin-bottom:12px">
-      <input id="apikey-input" type="password" placeholder="sk-ant-api03-..." style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid #444;background:#111;color:#fff;font-size:14px;font-family:monospace;box-sizing:border-box">
+      <input id="apikey-input" type="password" placeholder="sk-ant-api03-..." style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid #444;background:#111;color:#fff;font-size:14px;font-family:monospace;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter') saveApiKey()">
     </div>
     <div style="font-size:12px;color:#666;margin-bottom:20px">Get your key at <a href="https://console.anthropic.com/keys" target="_blank" style="color:#c8f06e">console.anthropic.com/keys</a></div>
-    <button onclick="saveApiKey()" style="width:100%;padding:13px;background:#c8f06e;color:#0e0f11;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">Save & Start</button>
+    <button onclick="saveApiKey()" style="width:100%;padding:13px;background:#c8f06e;color:#0e0f11;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer" id="apikey-save-btn">Save & Start</button>
     <div id="apikey-error" style="color:#f06e6e;font-size:12px;margin-top:10px;text-align:center;min-height:16px"></div>
   </div>
 </div>
@@ -568,7 +575,9 @@
           <div style="font-size:11px;color:var(--muted)" id="sidebar-goal">Set your goals</div>
         </div>
       </button>
-      <button onclick="localStorage.removeItem('macrotrack_apikey');location.reload()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px;white-space:nowrap" title="Change API key">API ↺</button>
+      <button onclick="openApiKeyModal()" id="sidebar-api-status"
+        style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:3px 8px;white-space:nowrap;transition:all 0.15s"
+        title="API key status">API ●</button>
       <div id="gdrive-status-badge" style="font-size:13px;cursor:pointer" onclick="showGdriveOverlay()" title="Google Drive sync"></div>
     </div>
   </nav>
@@ -1358,19 +1367,77 @@ function save() { localStorage.setItem('macrotrack', JSON.stringify(state)); }
 
 // -- API KEY -------------------------------------------------------------------
 function getApiKey() { return localStorage.getItem('macrotrack_apikey') || ''; }
+function openApiKeyModal() {
+  const key = getApiKey();
+  const overlay = document.getElementById('apikey-overlay');
+  const closeBtn = document.getElementById('apikey-close-btn');
+  const badge = document.getElementById('apikey-status-badge');
+  const title = document.getElementById('apikey-modal-title');
+  const input = document.getElementById('apikey-input');
+  const saveBtn = document.getElementById('apikey-save-btn');
+
+  // If key exists, show status and allow close
+  if (key) {
+    if (closeBtn) closeBtn.style.display = 'block';
+    if (badge) {
+      badge.style.display = 'block';
+      badge.style.background = 'rgba(200,240,110,0.1)';
+      badge.style.border = '1px solid rgba(200,240,110,0.3)';
+      badge.style.color = '#c8f06e';
+      badge.innerHTML = '✓ API key connected &nbsp;·&nbsp; <span style="font-size:11px;opacity:0.7;font-family:monospace">sk-ant-....' + key.slice(-4) + '</span>';
+    }
+    if (title) title.textContent = 'Update API Key';
+    if (saveBtn) saveBtn.textContent = 'Update Key';
+    if (input) input.placeholder = 'Paste new key to replace...';
+  } else {
+    if (closeBtn) closeBtn.style.display = 'none';
+    if (badge) badge.style.display = 'none';
+    if (title) title.textContent = 'Enter your Anthropic API Key';
+    if (saveBtn) saveBtn.textContent = 'Save & Start';
+  }
+  overlay.style.display = 'flex';
+  if (input) setTimeout(() => input.focus(), 100);
+}
+
+function updateApiKeyStatus() {
+  const key = getApiKey();
+  const btn = document.getElementById('sidebar-api-status');
+  if (!btn) return;
+  if (key) {
+    btn.textContent = 'API ✓';
+    btn.style.color = 'var(--accent)';
+    btn.style.borderColor = 'rgba(200,240,110,0.4)';
+    btn.title = 'API key connected · click to change';
+  } else {
+    btn.textContent = 'API !';
+    btn.style.color = 'var(--red)';
+    btn.style.borderColor = 'rgba(240,110,110,0.4)';
+    btn.title = 'No API key set · click to add';
+  }
+}
+
+
 function saveApiKey() {
   const key = document.getElementById('apikey-input').value.trim();
+  if (!key) {
+    if (getApiKey()) { document.getElementById('apikey-overlay').style.display = 'none'; return; }
+    document.getElementById('apikey-error').textContent = 'Please enter your API key';
+    return;
+  }
   if (!key.startsWith('sk-ant-')) {
     document.getElementById('apikey-error').textContent = 'Key should start with sk-ant- -- check and try again.';
     return;
   }
   localStorage.setItem('macrotrack_apikey', key);
   document.getElementById('apikey-overlay').style.display = 'none';
+  document.getElementById('apikey-input').value = '';
+  document.getElementById('apikey-error').textContent = '';
+  updateApiKeyStatus();
+  if (gdriveToken) saveToDrive();
 }
 function checkApiKey() {
-  if (!getApiKey()) {
-    document.getElementById('apikey-overlay').style.display = 'flex';
-  }
+  updateApiKeyStatus();
+  if (!getApiKey()) openApiKeyModal();
 }
 function apiHeaders() {
   return {
@@ -4277,9 +4344,16 @@ async function loadFromDrive() {
     const res = await gdriveRequest('GET',
       'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media'
     );
-    if (res.status === 404) return; // no file yet, fresh start
+    if (res.status === 404) {
+      // No file yet — check if we need an API key
+      if (!getApiKey()) document.getElementById('apikey-overlay').style.display = 'flex';
+      return;
+    }
     const data = await res.json();
-    if (!data || !data.foodLog) return; // empty or invalid
+    if (!data || !data.foodLog) {
+      if (!getApiKey()) document.getElementById('apikey-overlay').style.display = 'flex';
+      return;
+    }
 
     // Restore state
     if (data.foodLog)    state.foodLog    = data.foodLog;
@@ -4289,10 +4363,13 @@ async function loadFromDrive() {
     if (data.macroGoals) state.macroGoals = data.macroGoals;
     if (data.cycle)      state.cycle      = data.cycle;
 
-    // Restore API key if present and not already set
-    if (data.apiKey && !getApiKey()) {
+    // Restore API key from Drive (overwrite local — Drive is source of truth)
+    if (data.apiKey) {
       localStorage.setItem('macrotrack_apikey', data.apiKey);
       document.getElementById('apikey-overlay').style.display = 'none';
+    } else if (!getApiKey()) {
+      // No key in Drive or local — ask for it
+      document.getElementById('apikey-overlay').style.display = 'flex';
     }
 
     // Save to localStorage as backup
@@ -4306,6 +4383,8 @@ async function loadFromDrive() {
     setGdriveBadge('synced');
   } catch(e) {
     if (e.message !== 'token_expired') console.error('Drive load error:', e);
+    // On any error, still check if we need an API key
+    if (!getApiKey()) document.getElementById('apikey-overlay').style.display = 'flex';
   }
 }
 
