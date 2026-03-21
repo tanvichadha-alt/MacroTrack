@@ -1452,11 +1452,16 @@ function checkApiKey() {
   if (!getApiKey()) openApiKeyModal();
 }
 function apiHeaders() {
+  const key = getApiKey();
+  if (!key) {
+    openApiKeyModal();
+    throw new Error('No API key set — please enter your Anthropic key');
+  }
   return {
     'Content-Type': 'application/json',
     'anthropic-version': '2023-06-01',
     'anthropic-dangerous-direct-browser-access': 'true',
-    'x-api-key': getApiKey()
+    'x-api-key': key
   };
 }
 
@@ -4419,6 +4424,8 @@ async function loadFromDrive() {
     renderMealPlan();
     updateSidebarProfile();
     setGdriveBadge('synced');
+    // Write back to Drive to ensure API key is stored there too
+    setTimeout(saveToDrive, 1000);
   } catch(e) {
     if (e.message !== 'token_expired') console.error('Drive load error:', e);
     // On any error, still check if we need an API key
