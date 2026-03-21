@@ -501,6 +501,7 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <body>
@@ -516,6 +517,23 @@
     <div style="font-size:12px;color:#666;margin-bottom:20px">Get your key at <a href="https://console.anthropic.com/keys" target="_blank" style="color:#c8f06e">console.anthropic.com/keys</a></div>
     <button onclick="saveApiKey()" style="width:100%;padding:13px;background:#c8f06e;color:#0e0f11;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">Save & Start</button>
     <div id="apikey-error" style="color:#f06e6e;font-size:12px;margin-top:10px;text-align:center;min-height:16px"></div>
+  </div>
+</div>
+
+<!-- GOOGLE DRIVE SYNC OVERLAY -->
+<div id="gdrive-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10000;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#1a1b1e;border:1px solid #333;border-radius:20px;padding:36px 32px;max-width:400px;width:100%;text-align:center">
+    <div style="font-size:36px;margin-bottom:12px">🌿</div>
+    <h2 style="font-size:22px;margin-bottom:8px;color:#e8e9ec">MacroTrack</h2>
+    <p style="color:#888;font-size:14px;margin-bottom:28px;line-height:1.6">Sign in with Google to sync your data and API key across all your devices.</p>
+    <div id="gdrive-signin-btn" style="display:flex;justify-content:center;margin-bottom:16px">
+      <button onclick="requestGdriveAccess()" style="background:#fff;color:#333;border:none;border-radius:10px;padding:11px 22px;font-size:14px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,0.3)">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+    </div>
+    <button onclick="skipGdriveSync()" style="font-size:12px;color:#555;background:none;border:none;cursor:pointer;text-decoration:underline">Use without sync (this device only)</button>
+    <div id="gdrive-status" style="font-size:12px;color:#6ee8f0;margin-top:12px;min-height:16px"></div>
   </div>
 </div>
 
@@ -548,6 +566,7 @@
         </div>
       </button>
       <button onclick="localStorage.removeItem('macrotrack_apikey');location.reload()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px;white-space:nowrap" title="Change API key">API ↺</button>
+      <div id="gdrive-status-badge" style="font-size:13px;cursor:pointer" onclick="showGdriveOverlay()" title="Google Drive sync"></div>
     </div>
   </nav>
 
@@ -4071,6 +4090,231 @@ function renderMetricsChart(data, activeMacros) {
     }
   });
 }
+
+
+// ===================== GOOGLE DRIVE SYNC =====================
+const GDRIVE_CLIENT_ID = '692425031294-7a81tiqt6jcbf39hnv3em73vsvca5q2k.apps.googleusercontent.com';
+const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
+const GDRIVE_FILE_NAME = 'macrotrack-data.json';
+let gdriveToken = null;
+let gdriveFileId = null;
+let gdriveSyncing = false;
+
+function initGoogleDrive() {
+  // Check if we have a stored token
+  const stored = localStorage.getItem('gdrive_token');
+  const expiry = localStorage.getItem('gdrive_token_expiry');
+  if (stored && expiry && Date.now() < parseInt(expiry)) {
+    gdriveToken = stored;
+    gdriveFileId = localStorage.getItem('gdrive_file_id') || null;
+    setGdriveBadge('synced');
+    // Load data from Drive on startup
+    loadFromDrive();
+    return;
+  }
+  // Show overlay
+  showGdriveOverlay();
+}
+
+function showGdriveOverlay() {
+  const overlay = document.getElementById('gdrive-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  // Render Google Sign In button
+  const btnDiv = document.getElementById('gdrive-signin-btn');
+  if (btnDiv && window.google) {
+    btnDiv.innerHTML = '';
+    google.accounts.oauth2.initTokenClient({
+      client_id: GDRIVE_CLIENT_ID,
+      scope: GDRIVE_SCOPES,
+      callback: onGdriveToken,
+    }).requestAccessToken();
+  } else {
+    // Fallback button
+    btnDiv.innerHTML = '<button onclick="requestGdriveAccess()" style="background:#fff;color:#333;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:500;cursor:pointer">Sign in with Google</button>';
+  }
+}
+
+function requestGdriveAccess() {
+  if (!window.google) { document.getElementById('gdrive-status').textContent = 'Google sign-in loading — try again in a moment'; return; }
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: GDRIVE_CLIENT_ID,
+    scope: GDRIVE_SCOPES,
+    callback: onGdriveToken,
+  });
+  client.requestAccessToken();
+}
+
+function onGdriveToken(resp) {
+  if (resp.error) {
+    document.getElementById('gdrive-status').textContent = 'Sign-in failed: ' + resp.error;
+    return;
+  }
+  gdriveToken = resp.access_token;
+  // Store with expiry (1 hour)
+  localStorage.setItem('gdrive_token', gdriveToken);
+  localStorage.setItem('gdrive_token_expiry', Date.now() + 3500000);
+  document.getElementById('gdrive-status').textContent = 'Signed in! Loading your data...';
+  setGdriveBadge('syncing');
+  // Try to load existing data, then close overlay
+  loadFromDrive().then(() => {
+    document.getElementById('gdrive-overlay').style.display = 'none';
+    setGdriveBadge('synced');
+  });
+}
+
+function skipGdriveSync() {
+  localStorage.setItem('gdrive_skipped', '1');
+  document.getElementById('gdrive-overlay').style.display = 'none';
+}
+
+function setGdriveBadge(status) {
+  const badge = document.getElementById('gdrive-status-badge');
+  if (!badge) return;
+  if (status === 'synced')  { badge.textContent = '☁'; badge.title = 'Synced to Google Drive'; badge.style.color = 'var(--accent)'; }
+  if (status === 'syncing') { badge.textContent = '↻'; badge.title = 'Syncing...'; badge.style.color = 'var(--accent2)'; }
+  if (status === 'error')   { badge.textContent = '⚠'; badge.title = 'Sync error — click to reconnect'; badge.style.color = 'var(--red)'; }
+  if (status === 'offline') { badge.textContent = '☁'; badge.title = 'Not synced (offline mode)'; badge.style.color = 'var(--muted)'; }
+}
+
+async function gdriveRequest(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'Authorization': 'Bearer ' + gdriveToken,
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) {
+    // Token expired
+    localStorage.removeItem('gdrive_token');
+    localStorage.removeItem('gdrive_token_expiry');
+    gdriveToken = null;
+    setGdriveBadge('error');
+    throw new Error('token_expired');
+  }
+  return res;
+}
+
+async function findOrCreateDriveFile() {
+  if (gdriveFileId) return gdriveFileId;
+  // Search for existing file
+  const search = await gdriveRequest('GET',
+    'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D%22' + GDRIVE_FILE_NAME + '%22&fields=files(id,name)'
+  );
+  const data = await search.json();
+  if (data.files && data.files.length > 0) {
+    gdriveFileId = data.files[0].id;
+    localStorage.setItem('gdrive_file_id', gdriveFileId);
+    return gdriveFileId;
+  }
+  // Create new file
+  const create = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + gdriveToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: GDRIVE_FILE_NAME, parents: ['appDataFolder'] })
+  });
+  const created = await create.json();
+  gdriveFileId = created.id;
+  localStorage.setItem('gdrive_file_id', gdriveFileId);
+  return gdriveFileId;
+}
+
+async function saveToDrive() {
+  if (!gdriveToken || gdriveSyncing) return;
+  gdriveSyncing = true;
+  setGdriveBadge('syncing');
+  try {
+    const fileId = await findOrCreateDriveFile();
+    const payload = {
+      ...state,
+      apiKey: getApiKey(),
+      lastSaved: new Date().toISOString(),
+    };
+    // Upload file content
+    await fetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', {
+      method: 'PATCH',
+      headers: {
+        'Authorization': 'Bearer ' + gdriveToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    setGdriveBadge('synced');
+  } catch(e) {
+    console.error('Drive save error:', e);
+    if (e.message === 'token_expired') showGdriveOverlay();
+    else setGdriveBadge('error');
+  }
+  gdriveSyncing = false;
+}
+
+async function loadFromDrive() {
+  if (!gdriveToken) return;
+  try {
+    const fileId = await findOrCreateDriveFile();
+    const res = await gdriveRequest('GET',
+      'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media'
+    );
+    if (res.status === 404) return; // no file yet, fresh start
+    const data = await res.json();
+    if (!data || !data.foodLog) return; // empty or invalid
+
+    // Restore state
+    if (data.foodLog)    state.foodLog    = data.foodLog;
+    if (data.workouts)   state.workouts   = data.workouts;
+    if (data.menu)       state.menu       = data.menu;
+    if (data.profile)    state.profile    = data.profile;
+    if (data.macroGoals) state.macroGoals = data.macroGoals;
+    if (data.cycle)      state.cycle      = data.cycle;
+
+    // Restore API key if present and not already set
+    if (data.apiKey && !getApiKey()) {
+      localStorage.setItem('macrotrack_apikey', data.apiKey);
+      document.getElementById('apikey-overlay').style.display = 'none';
+    }
+
+    // Save to localStorage as backup
+    localStorage.setItem('macrotrack', JSON.stringify(state));
+
+    // Re-render everything
+    renderToday();
+    renderLog();
+    renderMealPlan();
+    updateSidebarProfile();
+    setGdriveBadge('synced');
+  } catch(e) {
+    if (e.message !== 'token_expired') console.error('Drive load error:', e);
+  }
+}
+
+// Override save() to also sync to Drive (debounced)
+const _origSave = save;
+let _driveDebounce = null;
+save = function() {
+  _origSave();
+  if (gdriveToken) {
+    clearTimeout(_driveDebounce);
+    _driveDebounce = setTimeout(saveToDrive, 2000); // 2s debounce
+  }
+};
+
+// Init Drive on load
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    if (localStorage.getItem('gdrive_skipped')) {
+      setGdriveBadge('offline');
+      return;
+    }
+    if (window.google) {
+      initGoogleDrive();
+    } else {
+      // GSI script not loaded yet, try again shortly
+      setTimeout(initGoogleDrive, 2000);
+    }
+  }, 500);
+});
 
 // ===================== INIT =====================
 checkApiKey();
