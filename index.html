@@ -575,13 +575,13 @@
           <div style="font-size:11px;color:var(--muted)" id="sidebar-goal">Set your goals</div>
         </div>
       </button>
-      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+      <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">
         <button onclick="openApiKeyModal()" id="sidebar-api-status"
           style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:3px 8px;white-space:nowrap;transition:all 0.15s"
           title="API key status">API ●</button>
         <button id="gdrive-auth-btn" onclick="handleGdriveAuthBtn()"
           style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:3px 8px;white-space:nowrap;transition:all 0.15s;color:var(--muted)"
-          title="Google Drive sync">☁</button>
+          title="Google Drive sync">☁ Sign in</button>
       </div>
     </div>
   </nav>
@@ -838,6 +838,41 @@
     <div class="page" id="page-profile">
       <h2 class="page-title">Profile</h2>
       <p class="page-sub">Your details power personalised macro recommendations</p>
+      <!-- Google account card -->
+      <div id="profile-google-card" style="margin-bottom:20px;display:none">
+        <div class="card" style="padding:16px 20px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div id="profile-google-avatar" style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#c8f06e,#6ee8f0);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#0e0f11;flex-shrink:0"></div>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text)" id="profile-google-name">Google Account</div>
+                <div style="font-size:12px;color:var(--muted)" id="profile-google-email"></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <div id="profile-sync-status" style="font-size:11px;color:var(--muted)"></div>
+              <button onclick="handleGdriveAuthBtn()" id="profile-google-btn"
+                style="font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer;transition:all 0.15s;white-space:nowrap"
+                onmouseover="this.style.color='var(--red)';this.style.borderColor='var(--red)'"
+                onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">Sign out</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="profile-google-signin-card" style="margin-bottom:20px">
+        <div class="card" style="padding:16px 20px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">Sync across devices</div>
+              <div style="font-size:12px;color:var(--muted)">Sign in with Google to save your data everywhere</div>
+            </div>
+            <button onclick="localStorage.removeItem('gdrive_skipped');showGdriveOverlay()"
+              style="font-size:12px;padding:6px 14px;border-radius:8px;border:1px solid var(--accent2);background:rgba(110,232,240,0.08);color:var(--accent2);cursor:pointer;white-space:nowrap;font-weight:500">
+              Sign in with Google
+            </button>
+          </div>
+        </div>
+      </div>
       <div class="grid2">
         <div>
           <div class="card">
@@ -2625,7 +2660,7 @@ function readAndScanPhoto(file) {
 }
 
 // ===================== COACH =====================
-let coachHistory = [];
+let coachHistory = JSON.parse(localStorage.getItem('macrotrack_coach') || '[]');
 let coachInitialised = false;
 
 function initCoach() {
@@ -2768,6 +2803,7 @@ ${buildCoachContext()}`;
 
     appendAriaMessage(cleanText, macroUpdate);
     coachHistory.push({ role: 'assistant', content: raw });
+    save(); // persist coach history
 
   } catch(e) {
     removeTyping(typingId);
@@ -4187,6 +4223,57 @@ function renderMetricsChart(data, activeMacros) {
 
 
 // ===================== GOOGLE DRIVE SYNC =====================
+
+let gdriveUserEmail = '';
+let gdriveUserName = '';
+
+async function fetchGdriveUserInfo() {
+  if (!gdriveToken) return;
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { 'Authorization': 'Bearer ' + gdriveToken }
+    });
+    const info = await res.json();
+    gdriveUserEmail = info.email || '';
+    gdriveUserName = info.name || info.given_name || '';
+    updateGdriveUI();
+  } catch(e) { console.error('Could not fetch user info:', e); }
+}
+
+function updateGdriveUI() {
+  const signedIn = !!gdriveToken;
+
+  // Sidebar button
+  const btn = document.getElementById('gdrive-auth-btn');
+  if (btn) {
+    btn.textContent = signedIn ? '☁ ' + (gdriveUserEmail ? gdriveUserEmail.split('@')[0] : 'Signed in') : '☁ Sign in';
+    btn.style.color = signedIn ? 'var(--accent)' : 'var(--muted)';
+    btn.style.borderColor = signedIn ? 'rgba(200,240,110,0.4)' : 'var(--border)';
+    btn.title = signedIn ? 'Signed in as ' + gdriveUserEmail + ' · click to sign out' : 'Sign in with Google to sync data';
+  }
+
+  // Profile page
+  const signedInCard = document.getElementById('profile-google-card');
+  const signedOutCard = document.getElementById('profile-google-signin-card');
+  if (signedIn) {
+    if (signedInCard) signedInCard.style.display = 'block';
+    if (signedOutCard) signedOutCard.style.display = 'none';
+    const nameEl = document.getElementById('profile-google-name');
+    const emailEl = document.getElementById('profile-google-email');
+    const avatarEl = document.getElementById('profile-google-avatar');
+    if (nameEl) nameEl.textContent = gdriveUserName || 'Google Account';
+    if (emailEl) emailEl.textContent = gdriveUserEmail;
+    if (avatarEl) avatarEl.textContent = (gdriveUserName || gdriveUserEmail || 'G')[0].toUpperCase();
+  } else {
+    if (signedInCard) signedInCard.style.display = 'none';
+    if (signedOutCard) signedOutCard.style.display = 'block';
+  }
+
+  // Profile sync status
+  const syncEl = document.getElementById('profile-sync-status');
+  if (syncEl) syncEl.textContent = signedIn ? '☁ Synced' : '';
+}
+
 const GDRIVE_CLIENT_ID = '298574642006-ca16sf8gi9omqg2m9i478297arvk3dek.apps.googleusercontent.com';
 const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 const GDRIVE_FILE_NAME = 'macrotrack-data.json';
@@ -4200,10 +4287,14 @@ function initGoogleDrive() {
   const expiry = localStorage.getItem('gdrive_token_expiry');
   if (stored && expiry && Date.now() < parseInt(expiry)) {
     gdriveToken = stored;
-    gdriveFileId = localStorage.getItem('gdrive_file_id') || null;
-    setGdriveBadge('synced');
+    gdriveFileId = null; // always search fresh
+    setGdriveBadge('syncing');
+    fetchGdriveUserInfo();
     // Load data from Drive on startup
-    loadFromDrive();
+    loadFromDrive().then(() => {
+      setGdriveBadge('synced');
+      updateGdriveUI();
+    });
     return;
   }
   // Show overlay
@@ -4268,9 +4359,13 @@ function onGdriveToken(resp) {
   localStorage.setItem('gdrive_token_expiry', Date.now() + 3500000);
   if (status) status.textContent = 'Signed in! Loading your data...';
   setGdriveBadge('syncing');
+  fetchGdriveUserInfo();
   loadFromDrive().then(() => {
     document.getElementById('gdrive-overlay').style.display = 'none';
     setGdriveBadge('synced');
+    updateGdriveUI();
+    // Save immediately to store user email in Drive
+    setTimeout(saveToDrive, 500);
   });
 }
 
@@ -4285,11 +4380,13 @@ function handleGdriveAuthBtn() {
     if (confirm('Sign out of Google Drive sync?\n\nYour data will still be saved locally on this device.')) {
       gdriveToken = null;
       gdriveFileId = null;
+      gdriveUserEmail = '';
+      gdriveUserName = '';
       localStorage.removeItem('gdrive_token');
       localStorage.removeItem('gdrive_token_expiry');
-      localStorage.removeItem('gdrive_file_id');
       localStorage.removeItem('gdrive_skipped');
       setGdriveBadge('offline');
+      updateGdriveUI();
     }
   } else {
     // Not signed in — show sign in overlay
@@ -4364,6 +4461,9 @@ async function saveToDrive() {
     const payload = JSON.stringify({
       ...state,
       apiKey: getApiKey(),
+      coachHistory: coachHistory,
+      userEmail: gdriveUserEmail,
+      userName: gdriveUserName,
       lastSaved: new Date().toISOString(),
     });
 
@@ -4424,22 +4524,25 @@ async function loadFromDrive() {
       return;
     }
 
-    // Restore state
+    // Restore ALL state from Drive
     if (data.foodLog)    state.foodLog    = data.foodLog;
     if (data.workouts)   state.workouts   = data.workouts;
     if (data.menu)       state.menu       = data.menu;
     if (data.profile)    state.profile    = data.profile;
     if (data.macroGoals) state.macroGoals = data.macroGoals;
     if (data.cycle)      state.cycle      = data.cycle;
+    if (data.coachHistory) coachHistory   = data.coachHistory;
 
-    // Restore API key from Drive (overwrite local — Drive is source of truth)
+    // Restore API key
     if (data.apiKey) {
       localStorage.setItem('macrotrack_apikey', data.apiKey);
       document.getElementById('apikey-overlay').style.display = 'none';
     } else if (!getApiKey()) {
-      // No key in Drive or local — ask for it
       openApiKeyModal();
     }
+
+    // Restore user info
+    if (data.userEmail) { gdriveUserEmail = data.userEmail; gdriveUserName = data.userName || ''; }
 
     // Save to localStorage as backup
     localStorage.setItem('macrotrack', JSON.stringify(state));
@@ -4449,9 +4552,8 @@ async function loadFromDrive() {
     renderLog();
     renderMealPlan();
     updateSidebarProfile();
+    updateGdriveUI();
     setGdriveBadge('synced');
-    // Write back to Drive to ensure API key is stored there too
-    setTimeout(saveToDrive, 1000);
   } catch(e) {
     if (e.message !== 'token_expired') console.error('Drive load error:', e);
     // On any error, still check if we need an API key
@@ -4464,9 +4566,11 @@ const _origSave = save;
 let _driveDebounce = null;
 save = function() {
   _origSave();
+  // Also persist coachHistory to localStorage
+  try { localStorage.setItem('macrotrack_coach', JSON.stringify(coachHistory)); } catch(e) {}
   if (gdriveToken) {
     clearTimeout(_driveDebounce);
-    _driveDebounce = setTimeout(saveToDrive, 2000); // 2s debounce
+    _driveDebounce = setTimeout(saveToDrive, 2000);
   }
 };
 
