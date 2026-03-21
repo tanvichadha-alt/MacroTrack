@@ -4275,17 +4275,19 @@ function updateGdriveUI() {
 }
 
 const GDRIVE_CLIENT_ID = '298574642006-ca16sf8gi9omqg2m9i478297arvk3dek.apps.googleusercontent.com';
-const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
+const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 const GDRIVE_FILE_NAME = 'macrotrack-data.json';
 let gdriveToken = null;
 let gdriveFileId = null;
 let gdriveSyncing = false;
 
 function initGoogleDrive() {
-  // Check if we have a stored token
+  // Check if we have a stored token with the right scopes
   const stored = localStorage.getItem('gdrive_token');
   const expiry = localStorage.getItem('gdrive_token_expiry');
-  if (stored && expiry && Date.now() < parseInt(expiry)) {
+  const storedScope = localStorage.getItem('gdrive_token_scope') || '';
+  const needsReauth = !storedScope.includes('userinfo.email');
+  if (stored && expiry && Date.now() < parseInt(expiry) && !needsReauth) {
     gdriveToken = stored;
     gdriveFileId = null; // always search fresh
     setGdriveBadge('syncing');
@@ -4357,6 +4359,7 @@ function onGdriveToken(resp) {
   gdriveToken = resp.access_token;
   localStorage.setItem('gdrive_token', gdriveToken);
   localStorage.setItem('gdrive_token_expiry', Date.now() + 3500000);
+  localStorage.setItem('gdrive_token_scope', GDRIVE_SCOPES);
   if (status) status.textContent = 'Signed in! Loading your data...';
   setGdriveBadge('syncing');
   fetchGdriveUserInfo();
@@ -4493,12 +4496,14 @@ async function saveToDrive() {
       }
     );
     if (!uploadRes.ok) {
-      const err = await uploadRes.json();
-      throw new Error(err.error?.message || 'Upload failed: ' + uploadRes.status);
+      const err = await uploadRes.json().catch(() => ({}));
+      throw new Error('Upload failed (' + uploadRes.status + '): ' + (err.error?.message || JSON.stringify(err)));
     }
     setGdriveBadge('synced');
   } catch(e) {
-    console.error('Drive save error:', e);
+    console.error('Drive save error:', e.message);
+    const syncEl = document.getElementById('profile-sync-status');
+    if (syncEl) syncEl.innerHTML = '<span style="color:var(--red)" title="' + e.message + '">⚠ ' + e.message.slice(0, 40) + '</span>';
     if (e.message === 'token_expired') showGdriveOverlay();
     else setGdriveBadge('error');
   }
