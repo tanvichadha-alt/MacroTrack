@@ -2747,6 +2747,13 @@ ${buildCoachContext()}`;
       })
     });
     const data = await res.json();
+    if (data.error) {
+      removeTyping(typingId);
+      appendAriaMessage('API error: ' + (data.error.message || JSON.stringify(data.error)));
+      btn.disabled = false;
+      renderContextBar();
+      return;
+    }
     const raw = data.content?.[0]?.text || 'Sorry, I had trouble responding. Try again.';
 
     removeTyping(typingId);
@@ -2764,7 +2771,7 @@ ${buildCoachContext()}`;
 
   } catch(e) {
     removeTyping(typingId);
-    appendAriaMessage('Something went wrong -- check your connection and try again.');
+    appendAriaMessage('Error: ' + e.message);
   }
   btn.disabled = false;
   renderContextBar();
