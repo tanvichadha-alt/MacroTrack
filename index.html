@@ -501,21 +501,28 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://accounts.google.com/gsi/client"></script>
 </head>
 <body>
 <body>
 <!-- API KEY SETUP OVERLAY -->
 <div id="apikey-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;padding:20px">
-  <div style="background:#1a1b1e;border:1px solid #333;border-radius:18px;padding:32px;max-width:420px;width:100%">
+  <div style="background:#1a1b1e;border:1px solid #333;border-radius:18px;padding:32px;max-width:420px;width:100%;position:relative">
+    <!-- Close button (always shown, but only functional if key already exists) -->
+    <button id="apikey-close-btn" onclick="closeApiKeyModal()"
+      style="position:absolute;top:14px;right:16px;background:none;border:none;color:#666;font-size:22px;cursor:pointer;line-height:1;padding:4px"
+      onmouseover="this.style.color='#aaa'" onmouseout="this.style.color='#666'">&#x2715;</button>
+    <!-- Status badge (shown when key exists) -->
+    <div id="apikey-status-badge" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:10px;font-size:13px;text-align:center"></div>
     <div style="font-size:28px;margin-bottom:10px;text-align:center">🔑</div>
-    <h2 style="margin-bottom:6px;text-align:center;font-size:20px">Enter your Anthropic API Key</h2>
+    <h2 id="apikey-modal-title" style="margin-bottom:6px;text-align:center;font-size:20px">Enter your Anthropic API Key</h2>
     <p style="color:#888;font-size:13px;text-align:center;margin-bottom:24px;line-height:1.6">MacroTrack uses Claude AI for food parsing, macro lookups, and Coach Aria. Your key is stored only in your browser and never sent anywhere except Anthropic.</p>
     <div style="margin-bottom:12px">
-      <input id="apikey-input" type="password" placeholder="sk-ant-api03-..." style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid #444;background:#111;color:#fff;font-size:14px;font-family:monospace;box-sizing:border-box">
+      <input id="apikey-input" type="password" placeholder="sk-ant-api03-..." style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid #444;background:#111;color:#fff;font-size:14px;font-family:monospace;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter') saveApiKey()">
     </div>
     <div style="font-size:12px;color:#666;margin-bottom:20px">Get your key at <a href="https://console.anthropic.com/keys" target="_blank" style="color:#c8f06e">console.anthropic.com/keys</a></div>
-    <button onclick="saveApiKey()" style="width:100%;padding:13px;background:#c8f06e;color:#0e0f11;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer">Save & Start</button>
+    <button onclick="saveApiKey()" style="width:100%;padding:13px;background:#c8f06e;color:#0e0f11;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer" id="apikey-save-btn">Save & Start</button>
     <div id="apikey-error" style="color:#f06e6e;font-size:12px;margin-top:10px;text-align:center;min-height:16px"></div>
   </div>
 </div>
@@ -526,12 +533,15 @@
     <div style="font-size:36px;margin-bottom:12px">🌿</div>
     <h2 style="font-size:22px;margin-bottom:8px;color:#e8e9ec">MacroTrack</h2>
     <p style="color:#888;font-size:14px;margin-bottom:28px;line-height:1.6">Sign in with Google to sync your data and API key across all your devices.</p>
-    <div id="gdrive-signin-btn" style="display:flex;justify-content:center;margin-bottom:16px">
-      <button onclick="requestGdriveAccess()" style="background:#fff;color:#333;border:none;border-radius:10px;padding:11px 22px;font-size:14px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,0.3)">
+    <div style="display:flex;justify-content:center;margin-bottom:16px">
+      <button onclick="requestGdriveAccess()" id="gdrive-main-btn"
+        style="background:#fff;color:#1a1a1a;border:none;border-radius:10px;padding:12px 24px;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,0.4);transition:opacity 0.15s"
+        onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
         <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
         Sign in with Google
       </button>
     </div>
+    <div id="gdrive-signin-btn" style="display:none"></div>
     <button onclick="skipGdriveSync()" style="font-size:12px;color:#555;background:none;border:none;cursor:pointer;text-decoration:underline">Use without sync (this device only)</button>
     <div id="gdrive-status" style="font-size:12px;color:#6ee8f0;margin-top:12px;min-height:16px"></div>
   </div>
@@ -565,7 +575,9 @@
           <div style="font-size:11px;color:var(--muted)" id="sidebar-goal">Set your goals</div>
         </div>
       </button>
-      <button onclick="localStorage.removeItem('macrotrack_apikey');location.reload()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px;white-space:nowrap" title="Change API key">API ↺</button>
+      <button onclick="openApiKeyModal()" id="sidebar-api-status"
+        style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:3px 8px;white-space:nowrap;transition:all 0.15s"
+        title="API key status">API ●</button>
       <div id="gdrive-status-badge" style="font-size:13px;cursor:pointer" onclick="showGdriveOverlay()" title="Google Drive sync"></div>
     </div>
   </nav>
@@ -1355,19 +1367,85 @@ function save() { localStorage.setItem('macrotrack', JSON.stringify(state)); }
 
 // -- API KEY -------------------------------------------------------------------
 function getApiKey() { return localStorage.getItem('macrotrack_apikey') || ''; }
+function closeApiKeyModal() {
+  // Only allow closing if a key is already set
+  if (getApiKey()) {
+    document.getElementById('apikey-overlay').style.display = 'none';
+    document.getElementById('apikey-input').value = '';
+    document.getElementById('apikey-error').textContent = '';
+  } else {
+    document.getElementById('apikey-error').textContent = 'Please enter your API key to continue';
+  }
+}
+
+function openApiKeyModal() {
+  const key = getApiKey();
+  const overlay = document.getElementById('apikey-overlay');
+  const badge = document.getElementById('apikey-status-badge');
+  const title = document.getElementById('apikey-modal-title');
+  const input = document.getElementById('apikey-input');
+  const saveBtn = document.getElementById('apikey-save-btn');
+
+  if (key) {
+    if (badge) {
+      badge.style.display = 'block';
+      badge.style.background = 'rgba(200,240,110,0.1)';
+      badge.style.border = '1px solid rgba(200,240,110,0.3)';
+      badge.style.color = '#c8f06e';
+      badge.innerHTML = '&#10003; API key connected &nbsp;&middot;&nbsp; <span style="font-size:11px;opacity:0.7;font-family:monospace">sk-ant-....' + key.slice(-4) + '</span>';
+    }
+    if (title) title.textContent = 'Update API Key';
+    if (saveBtn) saveBtn.textContent = 'Update Key';
+    if (input) input.placeholder = 'Paste new key to replace...';
+  } else {
+    if (badge) badge.style.display = 'none';
+    if (title) title.textContent = 'Enter your Anthropic API Key';
+    if (saveBtn) saveBtn.textContent = 'Save & Start';
+    if (input) input.placeholder = 'sk-ant-api03-...';
+  }
+  overlay.style.display = 'flex';
+  if (input) setTimeout(() => input.focus(), 100);
+}
+
+function updateApiKeyStatus() {
+  const key = getApiKey();
+  const btn = document.getElementById('sidebar-api-status');
+  if (!btn) return;
+  if (key) {
+    btn.textContent = 'API ✓';
+    btn.style.color = 'var(--accent)';
+    btn.style.borderColor = 'rgba(200,240,110,0.4)';
+    btn.title = 'API key connected · click to change';
+  } else {
+    btn.textContent = 'API !';
+    btn.style.color = 'var(--red)';
+    btn.style.borderColor = 'rgba(240,110,110,0.4)';
+    btn.title = 'No API key set · click to add';
+  }
+}
+
+
 function saveApiKey() {
   const key = document.getElementById('apikey-input').value.trim();
+  if (!key) {
+    if (getApiKey()) { document.getElementById('apikey-overlay').style.display = 'none'; return; }
+    document.getElementById('apikey-error').textContent = 'Please enter your API key';
+    return;
+  }
   if (!key.startsWith('sk-ant-')) {
     document.getElementById('apikey-error').textContent = 'Key should start with sk-ant- -- check and try again.';
     return;
   }
   localStorage.setItem('macrotrack_apikey', key);
   document.getElementById('apikey-overlay').style.display = 'none';
+  document.getElementById('apikey-input').value = '';
+  document.getElementById('apikey-error').textContent = '';
+  updateApiKeyStatus();
+  if (gdriveToken) saveToDrive();
 }
 function checkApiKey() {
-  if (!getApiKey()) {
-    document.getElementById('apikey-overlay').style.display = 'flex';
-  }
+  updateApiKeyStatus();
+  if (!getApiKey()) openApiKeyModal();
 }
 function apiHeaders() {
   return {
@@ -4093,7 +4171,7 @@ function renderMetricsChart(data, activeMacros) {
 
 
 // ===================== GOOGLE DRIVE SYNC =====================
-const GDRIVE_CLIENT_ID = '692425031294-7a81tiqt6jcbf39hnv3em73vsvca5q2k.apps.googleusercontent.com';
+const GDRIVE_CLIENT_ID = '298574642006-ca16sf8gi9omqg2m9i478297arvk3dek.apps.googleusercontent.com';
 const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 const GDRIVE_FILE_NAME = 'macrotrack-data.json';
 let gdriveToken = null;
@@ -4135,28 +4213,45 @@ function showGdriveOverlay() {
   }
 }
 
+let _tokenClient = null;
+
 function requestGdriveAccess() {
-  if (!window.google) { document.getElementById('gdrive-status').textContent = 'Google sign-in loading — try again in a moment'; return; }
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: GDRIVE_CLIENT_ID,
-    scope: GDRIVE_SCOPES,
-    callback: onGdriveToken,
-  });
-  client.requestAccessToken();
+  const btn = document.getElementById('gdrive-main-btn');
+  const status = document.getElementById('gdrive-status');
+  if (!window.google || !window.google.accounts) {
+    if (status) status.textContent = 'Loading Google sign-in... please try again in a moment';
+    setTimeout(requestGdriveAccess, 1000);
+    return;
+  }
+  if (btn) { btn.textContent = 'Signing in...'; btn.disabled = true; }
+  try {
+    if (!_tokenClient) {
+      _tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GDRIVE_CLIENT_ID,
+        scope: GDRIVE_SCOPES,
+        callback: onGdriveToken,
+      });
+    }
+    _tokenClient.requestAccessToken();
+  } catch(e) {
+    _resetGdriveBtn();
+    if (status) status.textContent = 'Error: ' + e.message;
+  }
 }
 
 function onGdriveToken(resp) {
+  const btn = document.getElementById('gdrive-main-btn');
+  const status = document.getElementById('gdrive-status');
   if (resp.error) {
-    document.getElementById('gdrive-status').textContent = 'Sign-in failed: ' + resp.error;
+    _resetGdriveBtn();
+    if (resp.error !== 'access_denied' && status) status.textContent = 'Sign-in failed: ' + resp.error;
     return;
   }
   gdriveToken = resp.access_token;
-  // Store with expiry (1 hour)
   localStorage.setItem('gdrive_token', gdriveToken);
   localStorage.setItem('gdrive_token_expiry', Date.now() + 3500000);
-  document.getElementById('gdrive-status').textContent = 'Signed in! Loading your data...';
+  if (status) status.textContent = 'Signed in! Loading your data...';
   setGdriveBadge('syncing');
-  // Try to load existing data, then close overlay
   loadFromDrive().then(() => {
     document.getElementById('gdrive-overlay').style.display = 'none';
     setGdriveBadge('synced');
@@ -4257,9 +4352,16 @@ async function loadFromDrive() {
     const res = await gdriveRequest('GET',
       'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media'
     );
-    if (res.status === 404) return; // no file yet, fresh start
+    if (res.status === 404) {
+      // No file yet — check if we need an API key
+      if (!getApiKey()) openApiKeyModal();
+      return;
+    }
     const data = await res.json();
-    if (!data || !data.foodLog) return; // empty or invalid
+    if (!data || !data.foodLog) {
+      if (!getApiKey()) openApiKeyModal();
+      return;
+    }
 
     // Restore state
     if (data.foodLog)    state.foodLog    = data.foodLog;
@@ -4269,10 +4371,13 @@ async function loadFromDrive() {
     if (data.macroGoals) state.macroGoals = data.macroGoals;
     if (data.cycle)      state.cycle      = data.cycle;
 
-    // Restore API key if present and not already set
-    if (data.apiKey && !getApiKey()) {
+    // Restore API key from Drive (overwrite local — Drive is source of truth)
+    if (data.apiKey) {
       localStorage.setItem('macrotrack_apikey', data.apiKey);
       document.getElementById('apikey-overlay').style.display = 'none';
+    } else if (!getApiKey()) {
+      // No key in Drive or local — ask for it
+      openApiKeyModal();
     }
 
     // Save to localStorage as backup
@@ -4286,6 +4391,8 @@ async function loadFromDrive() {
     setGdriveBadge('synced');
   } catch(e) {
     if (e.message !== 'token_expired') console.error('Drive load error:', e);
+    // On any error, still check if we need an API key
+    if (!getApiKey()) openApiKeyModal();
   }
 }
 
@@ -4300,20 +4407,36 @@ save = function() {
   }
 };
 
+const GOOGLE_SVG = '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg> Sign in with Google';
+
+function _resetGdriveBtn() {
+  const btn = document.getElementById('gdrive-main-btn');
+  if (btn) { btn.innerHTML = GOOGLE_SVG; btn.disabled = false; }
+}
+
+function _preInitTokenClient() {
+  if (window.google && window.google.accounts && !_tokenClient) {
+    try {
+      _tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GDRIVE_CLIENT_ID,
+        scope: GDRIVE_SCOPES,
+        callback: onGdriveToken,
+      });
+    } catch(e) { /* will retry on click */ }
+  }
+}
+
 // Init Drive on load
 window.addEventListener('load', () => {
+  _preInitTokenClient();
   setTimeout(() => {
+    _preInitTokenClient(); // second attempt if not ready yet
     if (localStorage.getItem('gdrive_skipped')) {
       setGdriveBadge('offline');
       return;
     }
-    if (window.google) {
-      initGoogleDrive();
-    } else {
-      // GSI script not loaded yet, try again shortly
-      setTimeout(initGoogleDrive, 2000);
-    }
-  }, 500);
+    initGoogleDrive();
+  }, 300);
 });
 
 // ===================== INIT =====================
