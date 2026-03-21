@@ -4335,15 +4335,13 @@ async function gdriveRequest(method, url, body) {
 }
 
 async function findOrCreateDriveFile() {
-  if (gdriveFileId) return gdriveFileId;
-  // Search for existing file
+  // Always search Drive first — don't trust cached ID across devices
   const search = await gdriveRequest('GET',
-    'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D%22' + GDRIVE_FILE_NAME + '%22&fields=files(id,name)'
+    'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D%22' + GDRIVE_FILE_NAME + '%22&fields=files(id,name)&pageSize=1'
   );
   const data = await search.json();
   if (data.files && data.files.length > 0) {
     gdriveFileId = data.files[0].id;
-    localStorage.setItem('gdrive_file_id', gdriveFileId);
     return gdriveFileId;
   }
   // Create new file
@@ -4354,7 +4352,6 @@ async function findOrCreateDriveFile() {
   });
   const created = await create.json();
   gdriveFileId = created.id;
-  localStorage.setItem('gdrive_file_id', gdriveFileId);
   return gdriveFileId;
 }
 
@@ -4364,20 +4361,41 @@ async function saveToDrive() {
   setGdriveBadge('syncing');
   try {
     const fileId = await findOrCreateDriveFile();
-    const payload = {
+    const payload = JSON.stringify({
       ...state,
       apiKey: getApiKey(),
       lastSaved: new Date().toISOString(),
-    };
-    // Upload file content
-    await fetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', {
-      method: 'PATCH',
-      headers: {
-        'Authorization': 'Bearer ' + gdriveToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
     });
+
+    // Use multipart upload to properly update file content
+    const boundary = 'macrotrack_boundary';
+    const body = [
+      '--' + boundary,
+      'Content-Type: application/json',
+      '',
+      JSON.stringify({ name: GDRIVE_FILE_NAME }),
+      '--' + boundary,
+      'Content-Type: application/json',
+      '',
+      payload,
+      '--' + boundary + '--',
+    ].join('\r\n');
+
+    const uploadRes = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=multipart',
+      {
+        method: 'PATCH',
+        headers: {
+          'Authorization': 'Bearer ' + gdriveToken,
+          'Content-Type': 'multipart/related; boundary=' + boundary,
+        },
+        body,
+      }
+    );
+    if (!uploadRes.ok) {
+      const err = await uploadRes.json();
+      throw new Error(err.error?.message || 'Upload failed: ' + uploadRes.status);
+    }
     setGdriveBadge('synced');
   } catch(e) {
     console.error('Drive save error:', e);
@@ -4400,7 +4418,8 @@ async function loadFromDrive() {
       return;
     }
     const data = await res.json();
-    if (!data || !data.foodLog) {
+    if (!data || typeof data !== 'object' || !('lastSaved' in data)) {
+      // File exists but has no valid data yet
       if (!getApiKey()) openApiKeyModal();
       return;
     }
