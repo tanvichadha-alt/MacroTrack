@@ -575,10 +575,14 @@
           <div style="font-size:11px;color:var(--muted)" id="sidebar-goal">Set your goals</div>
         </div>
       </button>
-      <button onclick="openApiKeyModal()" id="sidebar-api-status"
-        style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:3px 8px;white-space:nowrap;transition:all 0.15s"
-        title="API key status">API ●</button>
-      <div id="gdrive-status-badge" style="font-size:13px;cursor:pointer" onclick="showGdriveOverlay()" title="Google Drive sync"></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+        <button onclick="openApiKeyModal()" id="sidebar-api-status"
+          style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:3px 8px;white-space:nowrap;transition:all 0.15s"
+          title="API key status">API ●</button>
+        <button id="gdrive-auth-btn" onclick="handleGdriveAuthBtn()"
+          style="font-size:11px;background:none;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:3px 8px;white-space:nowrap;transition:all 0.15s;color:var(--muted)"
+          title="Google Drive sync">☁</button>
+      </div>
     </div>
   </nav>
 
@@ -4263,13 +4267,39 @@ function skipGdriveSync() {
   document.getElementById('gdrive-overlay').style.display = 'none';
 }
 
+function handleGdriveAuthBtn() {
+  if (gdriveToken) {
+    // Signed in — offer sign out
+    if (confirm('Sign out of Google Drive sync?\n\nYour data will still be saved locally on this device.')) {
+      gdriveToken = null;
+      gdriveFileId = null;
+      localStorage.removeItem('gdrive_token');
+      localStorage.removeItem('gdrive_token_expiry');
+      localStorage.removeItem('gdrive_file_id');
+      localStorage.removeItem('gdrive_skipped');
+      setGdriveBadge('offline');
+    }
+  } else {
+    // Not signed in — show sign in overlay
+    localStorage.removeItem('gdrive_skipped');
+    showGdriveOverlay();
+  }
+}
+
 function setGdriveBadge(status) {
   const badge = document.getElementById('gdrive-status-badge');
-  if (!badge) return;
-  if (status === 'synced')  { badge.textContent = '☁'; badge.title = 'Synced to Google Drive'; badge.style.color = 'var(--accent)'; }
-  if (status === 'syncing') { badge.textContent = '↻'; badge.title = 'Syncing...'; badge.style.color = 'var(--accent2)'; }
-  if (status === 'error')   { badge.textContent = '⚠'; badge.title = 'Sync error — click to reconnect'; badge.style.color = 'var(--red)'; }
-  if (status === 'offline') { badge.textContent = '☁'; badge.title = 'Not synced (offline mode)'; badge.style.color = 'var(--muted)'; }
+  const btn = document.getElementById('gdrive-auth-btn');
+  const labels = {
+    synced:  { icon: '☁', color: 'var(--accent)',  title: 'Synced · click to sign out' },
+    syncing: { icon: '↻', color: 'var(--accent2)', title: 'Syncing...' },
+    error:   { icon: '⚠', color: 'var(--red)',     title: 'Sync error · click to reconnect' },
+    offline: { icon: '☁', color: 'var(--muted)',   title: 'Not signed in · click to sign in with Google' },
+  };
+  const l = labels[status] || labels.offline;
+  if (badge) { badge.textContent = l.icon; badge.title = l.title; badge.style.color = l.color; }
+  if (btn)   { btn.textContent = l.icon;   btn.title   = l.title; btn.style.color   = l.color;
+    btn.style.borderColor = status === 'synced' ? 'rgba(200,240,110,0.4)' : status === 'error' ? 'rgba(240,110,110,0.4)' : 'var(--border)';
+  }
 }
 
 async function gdriveRequest(method, url, body) {
